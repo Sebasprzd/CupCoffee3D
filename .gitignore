@@ -1,0 +1,11 @@
+node_modules
+.dist
+Dist
+/build
+.env
+.DS_Store
+.idea
+.vscode
+*.log
+yarn.lock
+pnpm-lock.yaml
