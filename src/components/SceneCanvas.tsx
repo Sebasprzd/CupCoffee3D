@@ -5,6 +5,7 @@ import { CoffeeCup } from './3d/CoffeeCup';
 
 export const SceneCanvas: React.FC = () => {
   const [debugColors, setDebugColors] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const toggle = useCallback(() => setDebugColors((v) => !v), []);
 
   useEffect(() => {
@@ -28,13 +29,25 @@ export const SceneCanvas: React.FC = () => {
           shadow-mapSize-height={1024}
         />
         <Suspense fallback={null}>
-          <CoffeeCup debugColors={debugColors} />
+          <CoffeeCup
+            debugColors={debugColors}
+            draggable
+            coffee
+            coffeeLevel={0.55}
+            onDragChange={setDragging}
+          />
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.7, 0]} receiveShadow>
             <planeGeometry args={[6, 6]} />
-            <meshStandardMaterial color="#fffd6eff" roughness={0.9} />
+            <meshStandardMaterial color="#fffd6e" roughness={0.9} />
           </mesh>
         </Suspense>
-        <OrbitControls enableDamping minDistance={1.5} maxDistance={4} target={[0, 0.3, 0]} />
+        <OrbitControls
+          enableDamping
+          enabled={!dragging}
+          minDistance={1.5}
+          maxDistance={4}
+          target={[0, 0.3, 0]}
+        />
       </Canvas>
       <button
         onClick={toggle}
