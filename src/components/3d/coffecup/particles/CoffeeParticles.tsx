@@ -1,10 +1,3 @@
-/**
- * CoffeeParticles (modo Points)
- * - Sistema de puntos para “vapor” estilizado; útil para debug o estilo más chispeado.
- * - Incluye lógica de contención: mantiene las partículas dentro del radio interior de la taza
- *   hasta sobrepasar el rim, con ajustes por sector y lóbulo angular para evitar fugas locales.
- * - Para vapor más realista, ver CoffeeSteam (billboards + shader de ruido).
- */
 import * as React from 'react';
 import { useMemo, useRef } from 'react';
 import { Points, PointMaterial } from '@react-three/drei';
@@ -12,30 +5,28 @@ import { useFrame } from '@react-three/fiber';
 import { BufferAttribute, MathUtils, Points as ThreePoints, AdditiveBlending } from 'three';
 
 export interface CoffeeParticlesProps {
-  count?: number; // número de partículas
-  spread?: number; // radio del disco de emisión en XZ
-  baseY?: number; // altura base (nacimiento)
-  height?: number; // altura máxima antes de reciclar
-  speedRange?: [number, number]; // rango de velocidad ascendente
-  swirl?: number; // intensidad de oscilación lateral
-  size?: number; // tamaño del punto (en unidades de pantalla)
+  count?: number;
+  spread?: number;
+  baseY?: number;
+  height?: number;
+  speedRange?: [number, number];
+  swirl?: number;
+  size?: number;
   color?: string;
   opacity?: number;
-  position?: [number, number, number]; // offset global del grupo
-  // Parámetros de la taza para contener el vapor dentro de las paredes
-  constrainInside?: boolean; // si true, mantiene partículas dentro del radio interno hasta pasar el borde
-  cupInnerRadiusTop?: number; // radio interno en la parte superior (y = rimY)
-  cupInnerRadiusBottom?: number; // radio interno en la base interior (y = cupBottomY)
-  cupBottomY?: number; // y del fondo interior de la taza (p. ej. -0.6)
-  rimY?: number; // y del borde superior de la taza (p. ej. +0.6)
-  innerMargin?: number; // margen de seguridad para no tocar pared
-  wallEpsilon?: number; // recorte adicional para evitar solapado visual con la pared
-  sectorBoost?: number; // reducción extra del radio permitido en el cuadrante X+Z+
-  sectorYMaxRatio?: number; // hasta qué fracción de altura interna aplicar la reducción de sector (0..1)
-  // Reducción angular alrededor del bisector entre X+ y Z+ (≈45°)
-  angleBiasCenter?: number; // ángulo central en radianes (default 45° => Math.PI/4)
-  angleBiasWidth?: number; // semi-ancho (radianes) donde aplica el refuerzo
-  angleBoost?: number; // reducción adicional máxima del radio en el centro del lóbulo
+  position?: [number, number, number];
+  constrainInside?: boolean;
+  cupInnerRadiusTop?: number;
+  cupInnerRadiusBottom?: number;
+  cupBottomY?: number;
+  rimY?: number;
+  innerMargin?: number;
+  wallEpsilon?: number;
+  sectorBoost?: number;
+  sectorYMaxRatio?: number;
+  angleBiasCenter?: number;
+  angleBiasWidth?: number;
+  angleBoost?: number;
 }
 
 export function CoffeeParticles({
@@ -71,22 +62,18 @@ export function CoffeeParticles({
     speeds.current = new Float32Array(count);
     phases.current = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      // distribución uniforme en disco (usar sqrt para densidad homogénea)
       const a = Math.random() * Math.PI * 2;
       let r = Math.sqrt(Math.random()) * spread;
       let x = Math.cos(a) * r;
       let z = Math.sin(a) * r;
       const y = baseY + Math.random() * 0.12;
-      // Contención inicial: recortar al radio interno permitido en la altura base
       if (constrainInside) {
         const t = Math.min(Math.max((y - cupBottomY) / Math.max(1e-6, rimY - cupBottomY), 0), 1);
         let allowedR =
           MathUtils.lerp(cupInnerRadiusBottom, cupInnerRadiusTop, t) - innerMargin - wallEpsilon;
-        // Reducción por sector: cuadrante X+Z+ (entre rojo y verde)
         if (x > 0 && z > 0 && t <= sectorYMaxRatio) {
           allowedR -= sectorBoost;
         }
-        // Lóbulo angular centrado en 45° (solo en Q1) con caída lineal
         if (x > 0 && z > 0 && t <= sectorYMaxRatio && angleBoost > 0) {
           const ang = Math.atan2(z, x);
           const d = Math.abs(ang - angleBiasCenter);
@@ -140,14 +127,11 @@ export function CoffeeParticles({
     const t = state.clock.getElapsedTime();
     for (let i = 0; i < count; i++) {
       const idx = i * 3;
-      // subir en Y
       arr[idx + 1] += sp[i] * dt;
-      // swirl sutil en XZ
       const s = Math.sin(t * 0.85 + ph[i]) * swirl;
       const c = Math.cos(t * 0.72 + ph[i]) * swirl;
       arr[idx + 0] += s * 0.035;
       arr[idx + 2] += c * 0.035;
-      // Contención dinámica: mantener dentro del radio interno hasta pasar el rim
       if (constrainInside && arr[idx + 1] < rimY + 0.005) {
         const ty = Math.min(
           Math.max((arr[idx + 1] - cupBottomY) / Math.max(1e-6, rimY - cupBottomY), 0),
@@ -157,11 +141,9 @@ export function CoffeeParticles({
           MathUtils.lerp(cupInnerRadiusBottom, cupInnerRadiusTop, ty) - innerMargin - wallEpsilon;
         const px = arr[idx + 0];
         const pz = arr[idx + 2];
-        // Reducción por sector
         if (px > 0 && pz > 0 && ty <= sectorYMaxRatio) {
           allowedR -= sectorBoost;
         }
-        // Lóbulo angular centrado en 45°
         if (px > 0 && pz > 0 && ty <= sectorYMaxRatio && angleBoost > 0) {
           const ang = Math.atan2(pz, px);
           const d = Math.abs(ang - angleBiasCenter);
@@ -177,7 +159,6 @@ export function CoffeeParticles({
           arr[idx + 2] = pz * scale;
         }
       }
-      // reciclar al superar altura
       if (arr[idx + 1] > baseY + height) {
         arr[idx + 1] = baseY + Math.random() * 0.1;
         const a = Math.random() * Math.PI * 2;
@@ -191,11 +172,9 @@ export function CoffeeParticles({
           );
           let allowedR =
             MathUtils.lerp(cupInnerRadiusBottom, cupInnerRadiusTop, ty) - innerMargin - wallEpsilon;
-          // Reducción por sector
           if (x > 0 && z > 0 && ty <= sectorYMaxRatio) {
             allowedR -= sectorBoost;
           }
-          // Lóbulo angular centrado en 45°
           if (x > 0 && z > 0 && ty <= sectorYMaxRatio && angleBoost > 0) {
             const ang = Math.atan2(z, x);
             const d = Math.abs(ang - angleBiasCenter);
@@ -218,7 +197,7 @@ export function CoffeeParticles({
         ph[i] = Math.random() * Math.PI * 2;
       }
     }
-    pos.needsUpdate = true;
+    (pos as any).needsUpdate = true;
   });
 
   return (

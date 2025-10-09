@@ -11,9 +11,7 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Sparkles } from '@react-three/drei';
 import React, { Suspense, useState, useEffect, useCallback } from 'react';
-import { CoffeeCup } from './3d/coffecup/CoffeeCup';
-import { CoffeeParticles } from './3d/coffeeParticles/CoffeeParticles';
-import { CoffeeSteam } from './3d/steam/CoffeeSteam';
+import { CoffeeCup, CoffeeParticles, CoffeeSteam } from './3d/coffecup';
 
 export const SceneCanvas: React.FC = () => {
   const [debugColors, setDebugColors] = useState(false);

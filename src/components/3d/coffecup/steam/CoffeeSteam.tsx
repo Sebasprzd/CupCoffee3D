@@ -4,28 +4,14 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Group, Mesh } from 'three';
 import { SteamMaterial } from './SteamMaterial';
 
-/**
- * CoffeeSteam
- * - Vapor tipo “wispy” usando varias columnas billboard con un shader de ruido suave.
- * - Cada columna siempre mira a la cámara y se desplaza/oscila para romper simetrías.
- *
- * Props:
- * - position: ancla del grupo (recom. sobre la superficie del café, p.ej. baseY+0.1)
- * - radius/height: tamaño del billboard (ancho x alto)
- * - columns: número de columnas superpuestas
- * - spread: separación radial entre columnas
- * - speed: factor de animación del ruido/scroll
- * - wobble: oscilación lateral sutil
- * - color/opacity: aspecto general del vapor
- */
 type CoffeeSteamProps = {
   position?: [number, number, number];
-  radius?: number; // ancho del billboard
-  height?: number; // alto del billboard
-  columns?: number; // cantidad de columnas superpuestas
-  spread?: number; // separación entre columnas
-  speed?: number; // velocidad de desplazamiento vertical de la textura
-  wobble?: number; // oscilación horizontal
+  radius?: number;
+  height?: number;
+  columns?: number;
+  spread?: number;
+  speed?: number;
+  wobble?: number;
   color?: string;
   opacity?: number;
 };
@@ -56,22 +42,18 @@ export function CoffeeSteam({
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
-    // billboard: que cada columna mire a la cámara
     for (let i = 0; i < meshes.current.length; i++) {
       const m = meshes.current[i];
       if (!m) continue;
       m.lookAt(camera.position);
       m.position.x = offsets[i][0] + Math.sin(t * 1.2 + i) * wobble;
       m.position.z = offsets[i][1] + Math.cos(t * 1.1 + i) * wobble;
-      // desplazamiento vertical suave (subir un poco el billboard para dar vida)
       m.position.y = Math.sin(t * 0.7 + i) * 0.03;
-      // inyectar tiempo al material
       const mat: any = m.material;
       if (mat && mat.uniforms && mat.uniforms.uTime) {
         mat.uniforms.uTime.value = t * speed * (1.0 + i * 0.07);
       }
     }
-    // mantener el grupo en posición
     if (group.current) {
       group.current.position.set(position[0], position[1], position[2]);
     }
