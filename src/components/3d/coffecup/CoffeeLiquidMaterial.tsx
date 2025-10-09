@@ -2,7 +2,7 @@ import * as React from 'react';
 import { extend, useFrame } from '@react-three/fiber';
 import { ShaderMaterial, Color } from 'three';
 
-class CoffeeLiquidMat extends ShaderMaterial {
+export class CoffeeLiquidMat extends ShaderMaterial {
   constructor() {
     super({
       uniforms: {
@@ -13,7 +13,7 @@ class CoffeeLiquidMat extends ShaderMaterial {
         uStrength: { value: 0.4 },
         uGloss: { value: 0.9 },
         // Ondas "idle" (cuando la taza está quieta también se mueven)
-        uIdleAmp: { value: 0.009 }, // amplitud base
+        uIdleAmp: { value: 0.08 }, // amplitud base
         uIdleSpeed: { value: 1.6 }, // velocidad global
         uIdleDetail: { value: 0.55 }, // mezcla ondas finas
       },
@@ -64,7 +64,7 @@ class CoffeeLiquidMat extends ShaderMaterial {
           // Fresnel simple para borde
           float fres = pow(1.0 - max(dot(N, vec3(0.0,1.0,0.0)), 0.0), 2.0);
           // Veteado sutil
-            float swirl = sin((vUv.x + vUv.y + uTime*0.15) * 8.0) * 0.04;
+          float swirl = sin((vUv.x + vUv.y + uTime*0.15) * 8.0) * 0.04;
           float shade = clamp(0.4 + swirl, 0.0, 1.0);
           vec3 base = mix(uBaseColor, uHighlight, shade*0.6);
           // Borde más claro

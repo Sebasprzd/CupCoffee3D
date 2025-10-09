@@ -1,4 +1,4 @@
-import { CoffeeLiquidMat } from '../components/3d/materials/CoffeeLiquidMaterial';
+import { CoffeeLiquidMat } from '../components/3d/coffecup/CoffeeLiquidMaterial';
 import { Material } from 'three';
 
 declare module '@react-three/fiber' {
