@@ -1,9 +1,32 @@
+/**
+ * CoffeeCup
+ * - Taza procedural compuesta por: paredes exterior/interior (cilindros openEnded), aro superior (ring), base sólida y asa (torus).
+ * - Incluye una “tapa” de líquido (cilindro muy delgado) que se posiciona según coffeeLevel y puede usar un shader personalizado.
+ * - Soporta arrastre en el plano XZ; al arrastrar desactiva OrbitControls vía onDragChange.
+ * - Reporta su posición de grupo vía onPositionChange para alinear elementos externos (vapor, marcadores, etc.).
+ *
+ * Geometría clave (variant='detailed'):
+ * - Pared exterior: radio top=0.85, bottom=0.7, altura=1.2 (openEnded=true)
+ * - Pared interior: radio top=0.73, bottom=0.59, altura=1.2 (openEnded=true)
+ * - Aro superior: ring [0.73, 0.85] para cubrir el borde
+ * - Base: disco interior (cilindro muy bajo) radio 0.73
+ * - Asa: torus en el lado X+ (lado rojo en las refs)
+ * - Líquido: disco radio ≈ 0.71 posicionado a y = -0.6 + 1.2*coffeeLevel - epsilon
+ */
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Group, BufferGeometry, Raycaster, Vector2, Plane, Vector3 } from 'three';
 import { CoffeeLiquidMaterial } from './CoffeeLiquidMaterial';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useCursor } from '@react-three/drei';
 
+/**
+ * Props de CoffeeCup
+ * - coffeeLevel: 0..1 mapea linealmente desde -0.6 (fondo interior) a +0.6 (borde/rim) usando y = -0.6 + 1.2*level
+ * - draggable: habilita arrastre en el plano XZ; usa raycaster+plane para posicionar
+ * - coffeeShader: si true, usa CoffeeLiquidMaterial (shader) para el disco del líquido
+ * - debugColors: materiales con colores llamativos para depurar geometrías
+ * - onDragChange/onPositionChange: comunicación con la escena para controles externos
+ */
 type CoffeeCupProps = {
   spin?: boolean;
   variant?: 'detailed' | 'simple';
@@ -41,6 +64,7 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
   const mouse = useRef(new Vector2());
   useCursor(hovered || dragging, 'grab');
 
+  // Proyecta el puntero al plano horizontal y=0 para convertir el arrastre en coordenadas XZ
   const computePlanePoint = useCallback(
     (clientX: number, clientY: number) => {
       const rect = gl.domElement.getBoundingClientRect();
@@ -71,6 +95,7 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
   );
 
   // Notificar posición inicial incluso si no es draggable
+  // Notificar posición inicial incluso si no es draggable (para alinear vapor/marker)
   useEffect(() => {
     if (groupRef.current) {
       const p = groupRef.current.position;
@@ -78,6 +103,7 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
     }
   }, [onPositionChange]);
 
+  // Sistema de drag: escucha pointermove/up globales; limita radio de desplazamiento para no perder la taza
   useEffect(() => {
     if (!draggable) return;
     // Notificar posición inicial cuando comenzamos a escuchar drag
@@ -113,6 +139,7 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
     };
   }, [dragging, draggable, computePlanePoint]);
 
+  // Animación opcional (spin) y ondulación legacy de la tapa de café en caso de no usar shader
   useFrame((_, delta) => {
     if (spin && groupRef.current) {
       groupRef.current.rotation.y += delta * 0.3;

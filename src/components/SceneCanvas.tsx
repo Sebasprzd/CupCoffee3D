@@ -1,8 +1,19 @@
+/**
+ * SceneCanvas
+ * - Orquesta: Canvas, luces, OrbitControls, piso, UI de toggles.
+ * - Importa: CoffeeCup (taza+líquido), CoffeeSteam (vapor realista), Sparkles (fallback), CoffeeParticles (modo alternativo/depuración).
+ * - Estado clave:
+ *   - level/baseY compartidos: derivan y del líquido (para alinear vapor y marker)
+ *   - cupPos: posición reportada por CoffeeCup (para posicionar vapor/marker)
+ *   - showCup / showParticles / useSparkles / showMarker / showRefs: toggles de UI
+ * - Cómo cambiar el nivel de café: ajustar const level (0..1).
+ */
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Sparkles } from '@react-three/drei';
 import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { CoffeeCup } from './3d/coffecup/CoffeeCup';
 import { CoffeeParticles } from './3d/coffeeParticles/CoffeeParticles';
+import { CoffeeSteam } from './3d/steam/CoffeeSteam';
 
 export const SceneCanvas: React.FC = () => {
   const [debugColors, setDebugColors] = useState(false);
@@ -12,6 +23,7 @@ export const SceneCanvas: React.FC = () => {
   const [showParticles, setShowParticles] = useState(true);
   const [useSparkles, setUseSparkles] = useState(true);
   const [showMarker, setShowMarker] = useState(true);
+  const [showRefs, setShowRefs] = useState(true);
   const toggle = useCallback(() => setDebugColors((v) => !v), []);
 
   useEffect(() => {
@@ -39,6 +51,11 @@ export const SceneCanvas: React.FC = () => {
           {(() => {
             const level = 0.7; // ajusta aquí el nivel que quieres (0..1)
             const baseY = -0.6 + 1.2 * level + 0.02;
+            const rimY = 0.6;
+            const innerTop = 0.73;
+            const innerBottom = 0.59;
+            const tLevel = Math.min(Math.max((baseY - -0.6) / 1.2, 0), 1);
+            const radiusAtBase = innerBottom + (innerTop - innerBottom) * tLevel;
             return (
               <>
                 {
@@ -52,6 +69,36 @@ export const SceneCanvas: React.FC = () => {
                     visible={showCup}
                   />
                 }
+                {showRefs && (
+                  <group>
+                    {/* Aros de referencia: radio interior en base y borde */}
+                    <mesh rotation={[Math.PI / 2, 0, 0]} position={[cupPos[0], baseY, cupPos[2]]}>
+                      <ringGeometry args={[radiusAtBase - 0.002, radiusAtBase + 0.002, 64, 1]} />
+                      <meshBasicMaterial color="#00ffff" transparent opacity={0.9} />
+                    </mesh>
+                    <mesh rotation={[Math.PI / 2, 0, 0]} position={[cupPos[0], rimY, cupPos[2]]}>
+                      <ringGeometry args={[innerTop - 0.002, innerTop + 0.002, 64, 1]} />
+                      <meshBasicMaterial color="#ff00ff" transparent opacity={0.9} />
+                    </mesh>
+                    {/* Marcadores cardinales en el borde superior */}
+                    <mesh position={[cupPos[0] + innerTop, rimY, cupPos[2]]}>
+                      <sphereGeometry args={[0.02, 10, 10]} />
+                      <meshBasicMaterial color="#ff3333" />
+                    </mesh>
+                    <mesh position={[cupPos[0] - innerTop, rimY, cupPos[2]]}>
+                      <sphereGeometry args={[0.02, 10, 10]} />
+                      <meshBasicMaterial color="#3399ff" />
+                    </mesh>
+                    <mesh position={[cupPos[0], rimY, cupPos[2] + innerTop]}>
+                      <sphereGeometry args={[0.02, 10, 10]} />
+                      <meshBasicMaterial color="#33ff66" />
+                    </mesh>
+                    <mesh position={[cupPos[0], rimY, cupPos[2] - innerTop]}>
+                      <sphereGeometry args={[0.02, 10, 10]} />
+                      <meshBasicMaterial color="#ffcc33" />
+                    </mesh>
+                  </group>
+                )}
                 {showParticles &&
                   (useSparkles ? (
                     <Sparkles
@@ -65,17 +112,16 @@ export const SceneCanvas: React.FC = () => {
                       opacity={1}
                     />
                   ) : (
-                    <CoffeeParticles
-                      position={[cupPos[0], cupPos[1], cupPos[2]]}
-                      count={520}
-                      spread={0.38}
-                      baseY={baseY}
-                      height={1.35}
-                      speedRange={[0.28, 0.65]}
-                      swirl={0.36}
-                      size={18}
-                      opacity={0.95}
+                    <CoffeeSteam
+                      position={[cupPos[0], baseY + 0.1, cupPos[2]]}
+                      radius={0.9}
+                      height={1.3}
+                      columns={4}
+                      spread={0.22}
+                      speed={0.55}
+                      wobble={0.06}
                       color="#ffffff"
+                      opacity={0.7}
                     />
                   ))}
                 {showMarker && (
@@ -100,6 +146,27 @@ export const SceneCanvas: React.FC = () => {
           target={[0, 0.3, 0]}
         />
       </Canvas>
+      {showRefs && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '0.75rem',
+            right: '0.75rem',
+            background: 'rgba(0,0,0,0.5)',
+            color: '#fff',
+            fontSize: '12px',
+            padding: '8px 10px',
+            borderRadius: '6px',
+            border: '1px solid #333',
+          }}
+        >
+          <div style={{ marginBottom: 4, fontWeight: 600 }}>Referencia de lados:</div>
+          <div>• Rojo (X+): lado del asa</div>
+          <div>• Azul (X-): lado opuesto al asa</div>
+          <div>• Verde (Z+): frente</div>
+          <div>• Amarillo (Z-): atrás</div>
+        </div>
+      )}
       <button
         onClick={toggle}
         style={{
@@ -117,6 +184,24 @@ export const SceneCanvas: React.FC = () => {
         }}
       >
         Debug {debugColors ? 'ON' : 'OFF'} (D)
+      </button>
+      <button
+        onClick={() => setShowRefs((v) => !v)}
+        style={{
+          position: 'absolute',
+          top: '9.5rem',
+          right: '0.75rem',
+          background: showRefs ? '#444' : '#0088cc',
+          color: '#fff',
+          fontSize: '12px',
+          padding: '6px 10px',
+          borderRadius: '6px',
+          border: '1px solid #444',
+          cursor: 'pointer',
+          opacity: 0.9,
+        }}
+      >
+        {showRefs ? 'Ocultar refs' : 'Mostrar refs'}
       </button>
       <button
         onClick={() => setShowCup((v) => !v)}

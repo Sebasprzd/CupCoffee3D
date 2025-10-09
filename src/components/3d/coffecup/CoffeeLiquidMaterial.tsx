@@ -1,3 +1,17 @@
+/**
+ * CoffeeLiquidMaterial
+ * - ShaderMaterial para la superficie del café con ondas “idle”, fresnel de borde y brillo especular sencillo.
+ * - Se usa como material del mesh cilíndrico muy delgado que representa la superficie del líquido.
+ *
+ * Uniforms principales:
+ * - uBaseColor, uHighlight, uRimColor: control de tonos base, reflejos y borde.
+ * - uStrength, uGloss: parámetros de intensidad y brillo especular.
+ * - uIdleAmp, uIdleSpeed, uIdleDetail: controlan ondas en reposo.
+ *
+ * Props expuestas en React (actualizan los uniforms cada frame):
+ * - baseColor, highlightColor, rimColor, strength, gloss
+ * - idleAmp, idleSpeed, idleDetail
+ */
 import * as React from 'react';
 import { extend, useFrame } from '@react-three/fiber';
 import { ShaderMaterial, Color } from 'three';
