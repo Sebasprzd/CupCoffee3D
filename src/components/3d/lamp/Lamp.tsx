@@ -4,7 +4,7 @@
  * - Mirrors debug/marker/refs/drag pattern like CoffeeCup and Desk.
  */
 import * as React from 'react';
-import { Group, Plane, Raycaster, Vector2, Vector3, Color } from 'three';
+import { Group, Plane, Raycaster, Vector2, Vector3, Color, CatmullRomCurve3 } from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useCursor } from '@react-three/drei';
 
@@ -18,11 +18,12 @@ type LampProps = {
   spin?: boolean;
   baseRadius?: number;
   baseHeight?: number;
-  stemHeight?: number;
-  stemRadius?: number;
-  shadeRadiusTop?: number;
-  shadeRadiusBottom?: number;
-  shadeHeight?: number;
+  stemHeight?: number; // altura del cuerpo
+  stemRadius?: number; // espesor del cuerpo
+  stemBend?: number; // curvatura hacia delante (Z+)
+  shadeLength?: number; // longitud total de la cabeza
+  shadeRadiusFront?: number; // radio en la boca (frente)
+  shadeRadiusNeck?: number; // radio en el cuello (cerca del cuerpo)
   onDragChange?: (dragging: boolean) => void;
   onPositionChange?: (pos: [number, number, number]) => void;
   lightOn?: boolean;
@@ -41,10 +42,11 @@ export const Lamp: React.FC<LampProps> = ({
   baseRadius = 0.32,
   baseHeight = 0.06,
   stemHeight = 0.8,
-  stemRadius = 0.05,
-  shadeRadiusTop = 0.12,
-  shadeRadiusBottom = 0.28,
-  shadeHeight = 0.28,
+  stemRadius = 0.045,
+  stemBend = 0.2,
+  shadeLength = 0.32,
+  shadeRadiusFront = 0.28,
+  shadeRadiusNeck = 0.12,
   onDragChange,
   onPositionChange,
   lightOn = true,
@@ -152,68 +154,98 @@ export const Lamp: React.FC<LampProps> = ({
         <meshStandardMaterial color={debugColors ? '#b8793a' : '#8b5a2b'} roughness={0.7} />
       </mesh>
 
-      {/* Poste curvo (stem). Aproximación con varios segmentos para simular curvatura */}
+      {/* Cuerpo curvo unificado (TubeGeometry sobre una curva) */}
       {(() => {
-        const segs = 6;
-        const parts: JSX.Element[] = [];
-        for (let i = 0; i < segs; i++) {
-          const t = i / segs;
-          const h = baseHeight + (i + 0.5) * (stemHeight / segs);
-          const bend = 0.18; // curvatura hacia delante (Z+)
-          const x = 0;
-          const z = Math.pow(t, 1.4) * bend; // curva suave hacia Z+
-          parts.push(
-            <mesh key={i} position={[x, h, z]} castShadow receiveShadow>
-              <cylinderGeometry args={[stemRadius, stemRadius, stemHeight / segs, 16]} />
+        // Curva: sube vertical desde la base y luego se inclina levemente hacia Z+
+        const p0 = new Vector3(0, baseHeight, 0);
+        const p1 = new Vector3(0, baseHeight + stemHeight * 0.45, 0);
+        const p2 = new Vector3(0, baseHeight + stemHeight * 0.8, stemBend * 0.5);
+        const p3 = new Vector3(0, baseHeight + stemHeight, stemBend);
+        const curve = new CatmullRomCurve3([p0, p1, p2, p3]);
+        return (
+          <mesh castShadow receiveShadow>
+            {/* TubeGeometry(path, tubularSegments, radius) */}
+            {/* Radios ligeramente mayores al frente para simular continuidad */}
+            <tubeGeometry args={[curve, 60, stemRadius, 24, false]} />
+            <meshStandardMaterial
+              color={debugColors ? '#2e86de' : '#e7e7ea'}
+              roughness={0.5}
+              metalness={0.1}
+            />
+          </mesh>
+        );
+      })()}
+
+      {/* Cabeza (shade) más continua: perfil lathe que pasa de cuello a boca */}
+      {(() => {
+        // Construimos un perfil 2D (r,y) y lo giramos con lathe para un cono redondeado
+        const steps = 7;
+        const profile: [number, number][] = [];
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const y = -t * shadeLength; // avanza hacia delante
+          // Interpolación suave entre cuello y frente con ligero abombado
+          const r =
+            shadeRadiusNeck * (1 - t) + shadeRadiusFront * t + Math.sin(t * Math.PI) * 0.012;
+          profile.push([r, y]);
+        }
+        const points = profile.map(([r, y]) => new Vector3(r, y, 0));
+        return (
+          <group position={[0, baseHeight + stemHeight, stemBend]} rotation={[-0.25, 0, 0]}>
+            <mesh castShadow>
+              {/* @ts-ignore three-stdlib lathe in r3f */}
+              <latheGeometry args={[points, 64]} />
+              <meshStandardMaterial
+                color={debugColors ? '#ff4d4f' : '#f2f3f7'}
+                roughness={0.6}
+                metalness={0.08}
+                side={2}
+              />
+            </mesh>
+            {/* Tapa/aro madera posterior (amplía para eliminar separación con el rojo) */}
+            {/* Ajusta el factor 0.98 y el espesor si ves espacio en modo debug */}
+            <mesh position={[0, 0.005, 0]}>
+              <cylinderGeometry
+                args={[shadeRadiusNeck * 0.98, shadeRadiusNeck * 0.98, 0.028, 48]}
+              />
+              <meshStandardMaterial color={debugColors ? '#ffb800' : '#c89d6d'} roughness={0.7} />
+            </mesh>
+
+            {/* Cuello conector: transición suave entre el tubo del cuerpo y el cuello de la cabeza */}
+            <mesh position={[0, 0.04, 0]} castShadow>
+              <cylinderGeometry args={[shadeRadiusNeck * 0.95, stemRadius * 1.2, 0.08, 32]} />
               <meshStandardMaterial
                 color={debugColors ? '#2e86de' : '#e7e7ea'}
-                roughness={0.55}
+                roughness={0.5}
                 metalness={0.1}
               />
             </mesh>
-          );
-        }
-        return <group>{parts}</group>;
+
+            {/* Bombillo y luz dentro de la cabeza, para alinearse con su orientación */}
+            <mesh position={[0, -shadeLength * 0.55, 0.0]} castShadow>
+              <sphereGeometry args={[0.07, 24, 24]} />
+              <meshStandardMaterial
+                color={debugColors ? '#ffffff' : '#fff3c4'}
+                emissive={debugColors ? '#000' : '#fff3c4'}
+                emissiveIntensity={lightOn ? lightIntensity : 0}
+                roughness={0.3}
+                metalness={0.0}
+              />
+            </mesh>
+            {lightOn && (
+              <pointLight
+                color={bulbColor}
+                intensity={lightIntensity}
+                position={[0, -shadeLength * 0.55, 0.0]}
+                distance={3.2}
+                decay={2}
+              />
+            )}
+          </group>
+        );
       })()}
 
-      {/* Pantalla (shade) */}
-      <group position={[0, baseHeight + stemHeight, 0.18]} rotation={[-0.25, 0, 0]}>
-        <mesh castShadow>
-          <cylinderGeometry args={[shadeRadiusTop, shadeRadiusBottom, shadeHeight, 48, 1, true]} />
-          <meshStandardMaterial
-            color={debugColors ? '#ff4d4f' : '#f2f3f7'}
-            roughness={0.6}
-            metalness={0.08}
-            side={2}
-          />
-        </mesh>
-        {/* Aro superior (detalle madera) */}
-        <mesh position={[0, shadeHeight / 2, 0]}>
-          <torusGeometry args={[shadeRadiusTop + 0.015, 0.01, 12, 40]} />
-          <meshStandardMaterial color={debugColors ? '#ffb800' : '#c89d6d'} roughness={0.7} />
-        </mesh>
-      </group>
-
-      {/* Bombillo */}
-      <mesh position={[0, baseHeight + stemHeight - 0.01, 0.24]} castShadow>
-        <sphereGeometry args={[0.07, 24, 24]} />
-        <meshStandardMaterial
-          color={debugColors ? '#ffffff' : '#fff3c4'}
-          emissive={debugColors ? '#000' : '#fff3c4'}
-          emissiveIntensity={lightOn ? lightIntensity : 0}
-          roughness={0.3}
-          metalness={0.0}
-        />
-      </mesh>
-      {lightOn && (
-        <pointLight
-          color={bulbColor}
-          intensity={lightIntensity}
-          position={[0, baseHeight + stemHeight - 0.01, 0.24]}
-          distance={3.2}
-          decay={2}
-        />
-      )}
+      {/* Bombillo y luz movidos a la cabeza (nada aquí) */}
 
       {/* Refs/markers */}
       {(showRefs || debugColors) && (
