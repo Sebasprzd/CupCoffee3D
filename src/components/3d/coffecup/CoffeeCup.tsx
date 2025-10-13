@@ -38,6 +38,19 @@ type CoffeeCupProps = {
   coffeeShader?: boolean;
   onPositionChange?: (pos: [number, number, number]) => void; // reportar posición del grupo
   visible?: boolean; // mostrar/ocultar taza
+  initialPosition?: [number, number, number]; // posición inicial (no controlada) del grupo
+  // Escala uniforme del grupo (1 = tamaño original)
+  scale?: number;
+  // Física simple / soporte de mesa
+  physics?: boolean;
+  floorY?: number; // y del suelo donde puede aterrizar si se cae
+  deskCenter?: [number, number]; // [x,z] centro de la mesa
+  deskTopY?: number; // y de la cara superior del tablero (mesa)
+  deskSize?: [number, number]; // [anchoX, profundidadZ]
+  edgeMargin?: number; // margen desde el borde para considerar “sobre la mesa”
+  dragPlaneY?: number; // altura del plano de arrastre (por defecto 0)
+  // Origen/posición de la mesa en mundo. Si cambia, la taza acompaña a la mesa.
+  deskOrigin?: [number, number, number];
 };
 
 export const CoffeeCup: React.FC<CoffeeCupProps> = ({
@@ -51,6 +64,16 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
   coffeeShader = true,
   onPositionChange,
   visible = true,
+  initialPosition,
+  scale = 1,
+  physics = false,
+  floorY = -0.7,
+  deskCenter,
+  deskTopY,
+  deskSize,
+  edgeMargin = 0.4,
+  dragPlaneY,
+  deskOrigin,
 }) => {
   const groupRef = useRef<Group>(null);
   const coffeeGeomRef = useRef<BufferGeometry | null>(null);
@@ -64,6 +87,50 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
   const mouse = useRef(new Vector2());
   useCursor(hovered || dragging, 'grab');
 
+  // Física simple: caída con gravedad y reposo sobre mesa/suelo
+  const yVel = useRef(0);
+  const gravity = 9.8; // unidades/s^2 (escala de escena)
+  const cupHalfHeight = 0.6; // de -0.6 a +0.6 en geometría (sin escalar)
+  const cupHalfHeightScaled = cupHalfHeight * scale;
+  const deskEnabled = !!deskCenter && deskTopY !== undefined && !!deskSize;
+  const halfW = deskSize ? deskSize[0] / 2 : 0;
+  const halfD = deskSize ? deskSize[1] / 2 : 0;
+
+  const isOverDesk = useCallback(() => {
+    if (!deskEnabled || !groupRef.current) return false;
+    const gp = groupRef.current.position;
+    const dx = gp.x - (deskCenter as [number, number])[0];
+    const dz = gp.z - (deskCenter as [number, number])[1];
+    return (
+      Math.abs(dx) <= Math.max(0, halfW - edgeMargin) &&
+      Math.abs(dz) <= Math.max(0, halfD - edgeMargin)
+    );
+  }, [deskEnabled, halfW, halfD, edgeMargin, deskCenter]);
+
+  // Seguir el movimiento de la mesa: si la mesa se traslada, mover la taza con el mismo delta
+  const prevDeskOrigin = useRef<[number, number, number] | null>(null);
+  useEffect(() => {
+    if (!deskOrigin) return;
+    if (!groupRef.current) {
+      prevDeskOrigin.current = deskOrigin;
+      return;
+    }
+    if (!prevDeskOrigin.current) {
+      prevDeskOrigin.current = deskOrigin;
+      return;
+    }
+    const [px, , pz] = prevDeskOrigin.current;
+    const dx = deskOrigin[0] - px;
+    const dz = deskOrigin[2] - pz;
+    if (dx !== 0 || dz !== 0) {
+      const gp = groupRef.current.position;
+      const yTop = deskTopY !== undefined ? deskTopY + cupHalfHeightScaled + 0.03 * scale : gp.y;
+      groupRef.current.position.set(gp.x + dx, yTop, gp.z + dz);
+      onPositionChange?.([gp.x + dx, yTop, gp.z + dz]);
+    }
+    prevDeskOrigin.current = deskOrigin;
+  }, [deskOrigin, deskTopY, scale, cupHalfHeightScaled, onPositionChange]);
+
   // Proyecta el puntero al plano horizontal y=0 para convertir el arrastre en coordenadas XZ
   const computePlanePoint = useCallback(
     (clientX: number, clientY: number) => {
@@ -72,12 +139,19 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
       mouse.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.current.setFromCamera(mouse.current, camera);
       const hit = new Vector3();
+      // si se dio un dragPlaneY, ajustar el plano y=dragPlaneY
+      if (dragPlaneY !== undefined) {
+        // Plane: n=(0,1,0), constant = -y (Three.js plane eq: n·p + constant = 0)
+        plane.current.set(new Vector3(0, 1, 0), -dragPlaneY);
+      } else {
+        plane.current.set(new Vector3(0, 1, 0), 0);
+      }
       if (raycaster.current.ray.intersectPlane(plane.current, hit)) {
         return hit;
       }
       return null;
     },
-    [camera, gl.domElement]
+    [camera, gl.domElement, dragPlaneY]
   );
 
   const onPointerDown = useCallback(
@@ -94,14 +168,19 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
     [draggable, computePlanePoint, onDragChange]
   );
 
-  // Notificar posición inicial incluso si no es draggable
-  // Notificar posición inicial incluso si no es draggable (para alinear vapor/marker)
+  // Aplicar posición inicial solo una vez (montaje) para evitar "snap back" en re-render
+  const didInit = useRef(false);
   useEffect(() => {
+    if (didInit.current) return;
     if (groupRef.current) {
+      if (initialPosition) {
+        groupRef.current.position.set(initialPosition[0], initialPosition[1], initialPosition[2]);
+      }
       const p = groupRef.current.position;
       onPositionChange?.([p.x, p.y, p.z]);
+      didInit.current = true;
     }
-  }, [onPositionChange]);
+  }, []);
 
   // Sistema de drag: escucha pointermove/up globales; limita radio de desplazamiento para no perder la taza
   useEffect(() => {
@@ -116,13 +195,22 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
       const p = computePlanePoint(e.clientX, e.clientY);
       if (p && dragOffset.current) {
         p.add(dragOffset.current);
-        const radiusLimit = 2.5;
-        const len = Math.sqrt(p.x * p.x + p.z * p.z);
-        if (len > radiusLimit) {
-          p.multiplyScalar(radiusLimit / len);
+        // Limitar arrastre al rectángulo de la mesa si hay datos de mesa
+        if (deskEnabled && deskCenter && deskSize) {
+          const minX = deskCenter[0] - (halfW - edgeMargin);
+          const maxX = deskCenter[0] + (halfW - edgeMargin);
+          const minZ = deskCenter[1] - (halfD - edgeMargin);
+          const maxZ = deskCenter[1] + (halfD - edgeMargin);
+          p.x = Math.min(Math.max(p.x, minX), maxX);
+          p.z = Math.min(Math.max(p.z, minZ), maxZ);
         }
-        groupRef.current.position.set(p.x, groupRef.current.position.y, p.z);
-        onPositionChange?.([p.x, groupRef.current.position.y, p.z]);
+        // Mientras arrastras, mantener Y pegado a la mesa si está definida
+        const yTop =
+          deskTopY !== undefined
+            ? deskTopY + cupHalfHeightScaled + 0.03 * scale
+            : groupRef.current.position.y;
+        groupRef.current.position.set(p.x, yTop, p.z);
+        onPositionChange?.([p.x, yTop, p.z]);
       }
     };
     const handleUp = () => {
@@ -143,6 +231,33 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
   useFrame((_, delta) => {
     if (spin && groupRef.current) {
       groupRef.current.rotation.y += delta * 0.3;
+    }
+    // Física: actualizar Y
+    if (physics && groupRef.current) {
+      const gp = groupRef.current.position;
+      const topY = deskTopY !== undefined ? deskTopY + cupHalfHeightScaled + 0.03 * scale : gp.y;
+      const floorStop = floorY + cupHalfHeightScaled;
+      if (dragging) {
+        // mientras arrastras, si estás sobre la mesa, “pega” a la mesa
+        if (isOverDesk()) {
+          gp.y = topY;
+          yVel.current = 0;
+        }
+      } else {
+        if (isOverDesk()) {
+          // reposo sobre mesa
+          gp.y = topY;
+          yVel.current = 0;
+        } else {
+          // caída libre hasta el suelo
+          yVel.current -= gravity * delta;
+          gp.y += yVel.current * delta;
+          if (gp.y < floorStop) {
+            gp.y = floorStop;
+            yVel.current = 0;
+          }
+        }
+      }
     }
     if (coffee && coffeeGeomRef.current) {
       const geom: any = coffeeGeomRef.current;
@@ -293,6 +408,7 @@ export const CoffeeCup: React.FC<CoffeeCupProps> = ({
     <group
       ref={groupRef}
       position={[0, 0, 0]}
+      scale={[scale, scale, scale]}
       dispose={null}
       visible={visible}
       onPointerOver={(e) => {
